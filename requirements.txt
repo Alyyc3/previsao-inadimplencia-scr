@@ -3,3 +3,4 @@ requests>=2.32
 ipykernel>=6.29
 pyarrow>=17
 matplotlib>=3.9
+scikit-learn>=1.9
