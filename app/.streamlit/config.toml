@@ -1,0 +1,98 @@
+# Tema "Azul confiança": azul-marinho na barra lateral, azul forte nos destaques,
+# fundo levemente azulado e laranja para chamar atenção. Modos claro e escuro.
+# Como há seções [theme.light] e [theme.dark], o visitante pode trocar a aparência
+# em Settings. Este arquivo fica ao lado do app.py, então vale tanto para
+# "streamlit run app/app.py" quanto para o Streamlit Community Cloud.
+# Contrastes conferidos (WCAG): textos acima de 4,5:1 e linhas de gráfico acima de 3:1.
+
+[client]
+# Esconde o botão "Deploy" e o menu de desenvolvedor para quem visita o app
+toolbarMode = "viewer"
+
+[theme]
+showWidgetBorder = true
+showSidebarBorder = false
+baseRadius = "10px"
+buttonRadius = "10px"
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+codeFontSize = "0.875rem"
+baseFontSize = 14
+baseFontWeight = 400
+headingFontSizes = ["32px", "24px", "20px", "16px", "14px", "14px"]
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+metricValueFontSize = "1.75rem"
+metricValueFontWeight = 700
+linkUnderline = true
+
+[theme.light]
+primaryColor = "#1D4ED8"              # azul forte: 6,3:1 no fundo; texto branco sobre ele 6,7:1
+backgroundColor = "#F5F8FC"           # branco levemente azulado
+secondaryBackgroundColor = "#E8EEF7"  # fundo de campos e caixas
+codeBackgroundColor = "#E8EEF7"
+textColor = "#0F172A"                 # azul quase preto: 16,8:1
+linkColor = "#1D4ED8"
+borderColor = "#C9D6EA"               # borda azul clara dos cartões
+codeTextColor = "#1E3A8A"
+grayColor = "#475569"                 # 7,1:1
+blueColor = "#1D4ED8"
+greenColor = "#059669"
+redColor = "#DC2626"
+yellowColor = "#CA8A04"
+orangeColor = "#EA580C"
+violetColor = "#6366F1"
+# Cores dos gráficos, em ordem: azul, laranja, verde-água, cinza-azulado, vermelho, mostarda, azul-claro
+chartCategoricalColors = ["#1D4ED8", "#EA580C", "#0D9488", "#64748B", "#DC2626", "#CA8A04", "#93C5FD"]
+dataframeBorderColor = "#C9D6EA"
+dataframeHeaderBackgroundColor = "#DCE6F4"
+dataframeHeaderTextColor = "#0F2A4A"
+
+[theme.dark]
+primaryColor = "#60A5FA"              # azul claro: 7,4:1 no fundo escuro
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#13203A"
+codeBackgroundColor = "#13203A"
+textColor = "#E2E8F0"                 # 15,2:1
+linkColor = "#93C5FD"
+borderColor = "#1E3354"
+codeTextColor = "#BFDBFE"
+grayColor = "#94A3B8"                 # 7,3:1
+blueColor = "#60A5FA"
+greenColor = "#34D399"
+redColor = "#F87171"
+yellowColor = "#FACC15"
+orangeColor = "#FB923C"
+violetColor = "#A5B4FC"
+chartCategoricalColors = ["#60A5FA", "#FB923C", "#2DD4BF", "#94A3B8", "#F87171", "#FACC15", "#BFDBFE"]
+dataframeBorderColor = "#1E3354"
+dataframeHeaderBackgroundColor = "#13203A"
+dataframeHeaderTextColor = "#E2E8F0"
+
+# Barra lateral azul-marinho nos dois modos, com texto claro (13,2:1)
+[theme.light.sidebar]
+backgroundColor = "#0F2A4A"
+secondaryBackgroundColor = "#1B3A5F"
+codeBackgroundColor = "#1B3A5F"
+textColor = "#F1F5F9"
+borderColor = "#2C4C74"
+primaryColor = "#93C5FD"              # azul claro nos itens selecionados: 8,0:1
+linkColor = "#93C5FD"
+codeTextColor = "#DBEAFE"
+blueColor = "#93C5FD"                 # títulos azuis legíveis sobre o azul-marinho
+grayColor = "#CBD5E1"                 # legendas da barra lateral: 9,8:1
+dataframeHeaderBackgroundColor = "#1B3A5F"
+dataframeBorderColor = "#2C4C74"
+
+[theme.dark.sidebar]
+backgroundColor = "#081A33"
+secondaryBackgroundColor = "#10294A"
+codeBackgroundColor = "#10294A"
+textColor = "#F1F5F9"
+borderColor = "#1E3A60"
+primaryColor = "#93C5FD"
+linkColor = "#93C5FD"
+codeTextColor = "#DBEAFE"
+blueColor = "#93C5FD"                 # títulos azuis legíveis sobre o azul-marinho
+grayColor = "#CBD5E1"
+dataframeHeaderBackgroundColor = "#10294A"
+dataframeBorderColor = "#1E3A60"
