@@ -112,6 +112,19 @@ A escolha foi feita numa **validação temporal dentro do treino**: sub-treino d
 - **Importância por impureza:** a importância nativa das árvores tende a favorecer variáveis com muitos valores possíveis. Serve como visão geral, não como medida exata.
 - **Dados agregados:** o modelo trabalha com recortes, não com operações ou clientes individuais.
 
+## App no Streamlit
+
+O app (`app/app.py`) usa a floresta aleatória **treinada de novo com todos os meses que já têm alvo** (jul/2022 a jun/2025, 13.896 linhas; `06_modelo_final.ipynb`). Com ela, pontua os meses-base de **jul a dez/2025**, cujo futuro ainda não está nos dados.
+
+São três abas:
+- **Ranking de risco:** os 386 recortes do mês escolhido ordenados pela nota de risco, com filtros de cliente, modalidade e UF.
+- **Evolução de um recorte:** a inadimplência e o atraso de 15 a 90 dias de 2022 a 2025, mais a nota de risco de cada mês de jul a dez/2025.
+- **Sobre o modelo:** como o modelo foi construído, os resultados no teste e as limitações.
+
+A **nota de risco** (0 a 1) serve para **ordenar** os recortes. Ela **não é uma probabilidade**, porque o modelo foi treinado dando mais peso aos casos de alta e as notas não foram calibradas.
+
+Em dez/2025, os 10 recortes de maior nota são todos de **financiamento rural para pessoa física**, em estados diferentes, com notas entre 0,85 e 0,95. O sinal aponta para o setor, e não para um estado específico.
+
 ## Estrutura do repositório
 
 ```
@@ -120,8 +133,14 @@ A escolha foi feita numa **validação temporal dentro do treino**: sub-treino d
 ├── 03_alvo.ipynb                 # definição do alvo
 ├── 04_variaveis.ipynb            # variáveis explicativas e separação por data
 ├── 05_modelo.ipynb               # treino, validação, teste e importância
+├── 06_modelo_final.ipynb         # modelo final e arquivos do app
+├── app/
+│   ├── app.py                    # app no Streamlit
+│   ├── modelo.joblib             # modelo treinado (gerado pelo 06)
+│   └── dados_app.parquet         # histórico dos recortes (gerado pelo 06)
 ├── src/
-│   └── dados.py                  # download do SCR.data e montagem do painel
+│   ├── dados.py                  # download do SCR.data e montagem do painel
+│   └── variaveis.py              # cálculo das variáveis do modelo
 ├── data/                         # gerada pelos notebooks (fora do Git)
 │   ├── raw/                      # ZIPs anuais do BCB
 │   └── processed/                # painéis e base do modelo em parquet
@@ -144,15 +163,17 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Depois rode os notebooks na ordem (`02` → `03` → `04` → `05`). O `02` baixa os ZIPs do Banco Central na primeira execução, cerca de 690 MB.
+Depois rode os notebooks na ordem (`02` → `03` → `04` → `05` → `06`). O `02` baixa os ZIPs do Banco Central na primeira execução, cerca de 690 MB.
+
+Para abrir o app, rode na pasta do projeto o comando abaixo. O modelo e os dados do app já estão no repositório, então não é preciso rodar os notebooks antes.
+
+```powershell
+streamlit run app/app.py
+```
 
 ## Tecnologias
 
-Python, pandas, pyarrow, matplotlib, scikit-learn e Jupyter.
-
-## Próximos passos
-
-- App interativo no Streamlit para explorar o risco previsto por recorte.
+Python, pandas, pyarrow, matplotlib, scikit-learn, Streamlit e Jupyter.
 
 ## Autoria
 
