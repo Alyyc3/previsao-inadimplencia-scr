@@ -3,7 +3,8 @@
 Para rodar, a partir da pasta do projeto:
     streamlit run app/app.py
 
-Os arquivos modelo.joblib e dados_app.parquet são gerados pelo 06_modelo_final.ipynb.
+O modelo.joblib é gerado pelo 06_modelo_final.ipynb. O dados_app.parquet foi gerado pelo 06 e
+atualizado pelo 07_dados_2026.ipynb (meses de 2026, mesmo modelo).
 O tema "Azul confiança" (cores, fonte, modo claro/escuro) fica em app/.streamlit/config.toml.
 """
 from pathlib import Path
@@ -12,6 +13,7 @@ import altair as alt
 import joblib
 import pandas as pd
 import streamlit as st
+from sklearn.metrics import average_precision_score, roc_auc_score
 
 PASTA_APP = Path(__file__).parent
 
@@ -45,16 +47,24 @@ dados = carregar_dados()
 # O Pipeline guarda os nomes das colunas usadas no fit
 VARIAVEIS = list(modelo.feature_names_in_)
 
+# Último mês-base usado no treino do modelo (06_modelo_final.ipynb). O app pontua os meses
+# DEPOIS dele: o modelo nunca viu esses meses. Para os mais antigos (jul/2025 a mar/2026),
+# o resultado de 6 meses depois já saiu, então dá para conferir as previsões.
+FIM_TREINO = pd.Timestamp("2025-06-30")
+
 
 @st.cache_data
 def pontuar():
-    """Calcula a nota de risco dos meses que ainda não têm alvo (jul a dez/2025)."""
-    a_pontuar = dados[dados["alvo"].isna()].dropna(subset=VARIAVEIS).copy()
+    """Calcula a nota de risco dos meses-base posteriores ao treino (jul/2025 em diante)."""
+    a_pontuar = dados[dados["data_base"] > FIM_TREINO].dropna(subset=VARIAVEIS).copy()
     a_pontuar["nota_risco"] = modelo.predict_proba(a_pontuar[VARIAVEIS])[:, 1]
     return a_pontuar
 
 
 notas = pontuar()
+N_RECORTES = len(dados[["uf", "cliente", "modalidade"]].drop_duplicates())  # 386
+ULTIMO_MES = dados["data_base"].max()
+ULTIMO_MES_COM_ALVO = notas.loc[notas["alvo"].notna(), "data_base"].max()
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +106,7 @@ def descrever(linha):
 
 
 def quantos_abaixo(nota, mes_ref):
-    """Quantos dos 386 recortes têm nota MENOR que esta (no mesmo mês-base)."""
+    """Quantos recortes têm nota MENOR que esta (no mesmo mês-base)."""
     todas = notas.loc[notas["data_base"] == mes_ref, "nota_risco"]
     return int((todas < nota).sum()), len(todas)
 
@@ -221,7 +231,7 @@ st.markdown(
 
 with st.expander("Primeira vez aqui? Entenda o app em 1 minuto", icon=":material/school:"):
     st.markdown(
-        """
+        f"""
 **O que é inadimplência?**
 É a parte do dinheiro emprestado que está com o pagamento muito atrasado (em geral, mais de 90 dias).
 Uma inadimplência de 4% quer dizer que, de cada R$ 100 emprestados, R$ 4 estão nessa situação.
@@ -253,7 +263,7 @@ Ela **não é uma chance em porcentagem**: uma nota 0,8 não quer dizer 80% de c
 
 **De onde vêm os dados?**
 Do SCR.data, uma base pública do Banco Central com informações de crédito de todo o sistema financeiro
-do Brasil. O app usa dados de 2022 a 2025. O modelo é uma floresta aleatória (scikit-learn).
+do Brasil. O app usa dados de jan/2022 a {ULTIMO_MES:%m/%Y}. O modelo é uma floresta aleatória (scikit-learn).
 """
     )
 
@@ -273,6 +283,17 @@ with st.sidebar:
         )
     )
     st.caption("A previsão olha para os 6 meses seguintes ao mês-base.")
+    # Mês em que sai o resultado da previsão (6 meses depois do mês-base)
+    mes_resultado = mes + pd.DateOffset(months=6) + pd.offsets.MonthEnd(0)
+    # Recortes com nota neste mês (um mês que o BC não publicou deixa um recorte sem nota)
+    n_mes = int((notas["data_base"] == mes).sum())
+    if n_mes < N_RECORTES:
+        sem_nota = N_RECORTES - n_mes
+        st.caption(
+            f":material/info: Em {mes:%m/%Y}, "
+            + ("1 recorte fica" if sem_nota == 1 else f"{sem_nota} recortes ficam")
+            + " sem nota: o Banco Central não publicou um dos meses usados no cálculo."
+        )
 
     # Poucas opções (PF/PJ): pills deixam tudo visível, sem abrir lista
     clientes = st.pills(
@@ -296,10 +317,15 @@ n_recortes = len(notas_f[notas_f["data_base"] == mes])
 filtrado = bool(clientes or modalidades or ufs)
 
 if n_recortes == 0:
-    st.warning(
-        "Nenhum recorte combina com esses filtros. Remova algum filtro na barra lateral.",
-        icon=":material/search_off:",
-    )
+    if dados_f.empty:
+        mensagem = "Nenhum recorte combina com esses filtros. Remova algum filtro na barra lateral."
+    else:
+        # O recorte existe, mas ficou sem nota neste mês (dado não publicado pelo BC)
+        mensagem = (
+            f"Os recortes desses filtros não têm nota em {mes:%m/%Y}: o Banco Central não publicou "
+            "um dos meses usados no cálculo. Escolha outro mês-base ou mude os filtros."
+        )
+    st.warning(mensagem, icon=":material/search_off:")
     st.stop()  # interrompe o app aqui: não há dados para mostrar
 
 # ---------------------------------------------------------------------------
@@ -324,7 +350,7 @@ with aba_resultados:
         )
     else:
         st.caption(
-            f"Resumo dos 386 recortes no mês-base {mes:%m/%Y}. Use a barra lateral para personalizar."
+            f"Resumo dos {n_mes} recortes com nota no mês-base {mes:%m/%Y}. Use a barra lateral para personalizar."
         )
 
     # Cálculos usados nos cartões e nos textos (sempre sobre os dados FILTRADOS) ----
@@ -434,6 +460,29 @@ with aba_resultados:
                 height="stretch",
             )
 
+    # Conferência: para meses-base antigos, o resultado de 6 meses depois já saiu ----
+    conferidos = notas_mes.dropna(subset=["alvo"])
+    if mes <= ULTIMO_MES_COM_ALVO and len(conferidos) > 0:
+        top_conf = conferidos.nlargest(k_top, "nota_risco")
+        altas_top = int(top_conf["alvo"].astype(int).sum())
+        pct_top = 100 * altas_top / len(top_conf)
+        pct_todos = 100 * conferidos["alvo"].astype(int).mean()
+        st.success(
+            f"Os dados de {mes_resultado:%m/%Y} já foram publicados, então dá para conferir as "
+            f"previsões feitas em {mes:%m/%Y}. Dos **{len(top_conf)} recortes com maior nota**, "
+            f"**{altas_top} tiveram alta relevante de fato** ({br(pct_top, 0)}%). Entre todos os "
+            f"{len(conferidos)} recortes {'selecionados' if filtrado else 'com nota'}, foram "
+            f"{br(pct_todos, 0)}%. Na aba **Ranking**, a coluna *Alta aconteceu?* mostra cada caso.",
+            title="O modelo acertou? Já dá para conferir",
+            icon=":material/fact_check:",
+        )
+    else:
+        st.caption(
+            f":material/schedule: O resultado das previsões de {mes:%m/%Y} só será conhecido quando o "
+            f"Banco Central publicar os dados de {mes_resultado:%m/%Y}. Para conferir acertos, escolha "
+            f"um mês-base até {ULTIMO_MES_COM_ALVO:%m/%Y} na barra lateral."
+        )
+
     # 1. Cenário: texto à esquerda, gráfico à direita -------------------------
     st.markdown("#### :blue[1. Como a inadimplência mudou desde 2022]")
     col_texto, col_grafico = st.columns([2, 3], gap="large")
@@ -528,7 +577,7 @@ with aba_resultados:
             m1 = base_texto.index[0]
             st.markdown(
                 f"O tipo de crédito selecionado, **{nome_curto(m1).lower()}**, tem nota média "
-                f"**{br(base_texto.loc[m1, 'mean'])}** (a mediana dos 386 recortes é {br(mediana_geral)})."
+                f"**{br(base_texto.loc[m1, 'mean'])}** (a mediana dos {n_mes} recortes é {br(mediana_geral)})."
             )
 
     ranking_mod = nota_modalidade.reset_index()
@@ -580,7 +629,7 @@ with aba_resultados:
             f"A inadimplência do crédito rural para pessoas físicas passou de **{br(rural_ini)}%** em "
             f"{primeiro_mes:%m/%Y} para **{br(rural_fim)}%** em {mes:%m/%Y}. Em {mes:%m/%Y}, "
             f"**{acima_mediana} dos {len(notas_rural)} estados** selecionados com esse tipo de crédito "
-            f"têm nota acima da mediana dos 386 recortes, com nota típica de "
+            f"têm nota acima da mediana dos {n_mes} recortes, com nota típica de "
             f"**{br(notas_rural['nota_risco'].median())}**."
         )
         if len(notas_rural) >= 5 and acima_mediana >= len(notas_rural) / 2:
@@ -667,7 +716,7 @@ with aba_ranking:
                 len(tabela),
                 icon=":material/grid_view:",
                 help="Quantos grupos de empréstimos (estado × tipo de cliente × modalidade) "
-                "entram nos filtros da barra lateral. Sem filtro = todos os 386.",
+                f"entram nos filtros da barra lateral. Sem filtro = todos os {n_mes} com nota.",
                 border=True,
                 height="stretch",
             )
@@ -720,7 +769,7 @@ with aba_ranking:
             icon=":material/info:",
         )
 
-        # Posição entre os 386 recortes do mês (1 = maior nota), mesmo quando há filtro
+        # Posição entre todos os recortes do mês (1 = maior nota), mesmo quando há filtro
         posicao_geral = (
             notas[notas["data_base"] == mes]["nota_risco"].rank(ascending=False, method="min").astype(int)
         )
@@ -740,14 +789,31 @@ with aba_ranking:
             .round({"nota_risco": 2, "taxa_inad": 2, "taxa_atraso_15_90": 2,
                     "var_taxa_inad_3m": 2, "carteira_bi": 1})
         )
+        # Meses-base já conferidos: mostra, ao lado da nota, se a alta relevante aconteceu
+        ja_conferido = mes <= ULTIMO_MES_COM_ALVO
+        if ja_conferido:
+            alvo_ordenado = tabela.loc[exibir.index, "alvo"]
+            exibir.insert(
+                2, "alta",
+                alvo_ordenado.map({1: "Sim", 0: "Não"}).astype(object).where(alvo_ordenado.notna(), "Sem dado"),
+            )
+            st.caption(
+                f":material/fact_check: Os dados de {mes_resultado:%m/%Y} já saíram: a coluna "
+                "**Alta aconteceu?** mostra se a inadimplência de cada recorte teve mesmo uma alta relevante."
+            )
         st.dataframe(
             exibir,
             hide_index=True,
             # help= mostra uma explicação quando o mouse passa sobre o nome da coluna
             column_config={
+                "alta": st.column_config.TextColumn(
+                    "Alta aconteceu?",
+                    help=f"Se a inadimplência subiu mais de 0,5 ponto e mais de 20% até {mes_resultado:%m/%Y}. "
+                    "Bom sinal para o modelo: muitos 'Sim' no topo da lista.",
+                ),
                 "posicao": st.column_config.NumberColumn(
                     "Posição", format="%dº",
-                    help="Lugar do recorte entre os 386, do maior para o menor risco. 1º = maior nota.",
+                    help=f"Lugar do recorte entre os {n_mes} do mês, do maior para o menor risco. 1º = maior nota.",
                 ),
                 "nota_risco": st.column_config.ProgressColumn(
                     "Nota de risco", min_value=0.0, max_value=1.0, format="localized",
@@ -834,57 +900,87 @@ with aba_recorte:
     ].sort_values("data_base")
 
     # Cartões do recorte no mês-base escolhido na barra lateral
-    linha_mes = historico[historico["data_base"] == mes].iloc[0]
-    nota_mes = notas_recorte.loc[notas_recorte["data_base"] == mes, "nota_risco"].iloc[0]
-    mediana_mes = notas.loc[notas["data_base"] == mes, "nota_risco"].median()
+    nota_do_mes = notas_recorte.loc[notas_recorte["data_base"] == mes, "nota_risco"]
+    if nota_do_mes.empty:
+        # Acontece quando o BC não publicou um mês usado no cálculo das variáveis deste recorte
+        meses_sem_dado = historico.loc[historico["carteira_ativa"].isna(), "data_base"]
+        st.info(
+            f"Este recorte não tem nota em {mes:%m/%Y}: o Banco Central não publicou os dados dele em "
+            + ", ".join(f"{m:%m/%Y}" for m in meses_sem_dado)
+            + ", e a nota usa a comparação com 3 e 6 meses antes. Escolha outro mês-base na barra "
+            "lateral. Os gráficos abaixo mostram a história do recorte.",
+            icon=":material/info:",
+        )
+    else:
+        linha_mes = historico[historico["data_base"] == mes].iloc[0]
+        nota_mes = nota_do_mes.iloc[0]
+        mediana_mes = notas.loc[notas["data_base"] == mes, "nota_risco"].median()
 
-    with st.grid(3, gap="medium", min_column_width=200):
-        st.metric(
-            f"Inadimplência em {mes:%m/%Y}",
-            f"{br(linha_mes['taxa_inad'])}%",
-            icon=":material/percent:",
-            help="Parte do dinheiro emprestado neste recorte com pagamento muito atrasado.",
-            border=True,
-            height="stretch",
-        )
-        st.metric(
-            f"Atraso 15-90 dias em {mes:%m/%Y}",
-            f"{br(linha_mes['taxa_atraso_15_90'])}%",
-            icon=":material/schedule:",
-            help="Parte do dinheiro emprestado com atraso curto (15 a 90 dias), um sinal de alerta.",
-            border=True,
-            height="stretch",
-        )
-        st.metric(
-            "Nota de risco",
-            br(nota_mes),
-            delta=br(nota_mes - mediana_mes),
-            delta_color="inverse",
-            delta_description="vs. mediana dos 386 recortes",
-            icon=":material/priority_high:",
-            help="A seta compara com a nota típica (mediana) de todos os recortes no mesmo mês. "
-            "Vermelho = risco acima do típico. Verde = abaixo.",
-            border=True,
-            height="stretch",
-        )
+        with st.grid(3, gap="medium", min_column_width=200):
+            st.metric(
+                f"Inadimplência em {mes:%m/%Y}",
+                f"{br(linha_mes['taxa_inad'])}%",
+                icon=":material/percent:",
+                help="Parte do dinheiro emprestado neste recorte com pagamento muito atrasado.",
+                border=True,
+                height="stretch",
+            )
+            st.metric(
+                f"Atraso 15-90 dias em {mes:%m/%Y}",
+                f"{br(linha_mes['taxa_atraso_15_90'])}%",
+                icon=":material/schedule:",
+                help="Parte do dinheiro emprestado com atraso curto (15 a 90 dias), um sinal de alerta.",
+                border=True,
+                height="stretch",
+            )
+            st.metric(
+                "Nota de risco",
+                br(nota_mes),
+                delta=br(nota_mes - mediana_mes),
+                delta_color="inverse",
+                delta_description=f"vs. mediana dos {n_mes} recortes",
+                icon=":material/priority_high:",
+                help="A seta compara com a nota típica (mediana) de todos os recortes no mesmo mês. "
+                "Vermelho = risco acima do típico. Verde = abaixo.",
+                border=True,
+                height="stretch",
+            )
 
-    # Explicação em linguagem simples: história do recorte + por que a nota é essa
-    st.markdown("#### :blue[O que está acontecendo com este recorte]")
-    with st.container(border=True):
-        inicio_r = historico.iloc[0]
-        var_6m = linha_mes["var_taxa_inad_6m"]
-        if var_6m > 0.1:
-            direcao = f"**subiu {br(var_6m)} ponto** nos últimos 6 meses"
-        elif var_6m < -0.1:
-            direcao = f"**caiu {br(-var_6m)} ponto** nos últimos 6 meses"
-        else:
-            direcao = "ficou **praticamente estável** nos últimos 6 meses"
-        st.markdown(
-            f"Desde {inicio_r['data_base']:%m/%Y}, a inadimplência deste recorte passou de "
-            f"**{br(inicio_r['taxa_inad'])}%** para **{br(linha_mes['taxa_inad'])}%** "
-            f"em {mes:%m/%Y}, e {direcao}."
-        )
-        explicar_recorte(linha_mes, nota_mes, mes)
+        # Explicação em linguagem simples: história do recorte + por que a nota é essa
+        st.markdown("#### :blue[O que está acontecendo com este recorte]")
+        with st.container(border=True):
+            inicio_r = historico.iloc[0]
+            var_6m = linha_mes["var_taxa_inad_6m"]
+            if var_6m > 0.1:
+                direcao = f"**subiu {br(var_6m)} ponto** nos últimos 6 meses"
+            elif var_6m < -0.1:
+                direcao = f"**caiu {br(-var_6m)} ponto** nos últimos 6 meses"
+            else:
+                direcao = "ficou **praticamente estável** nos últimos 6 meses"
+            st.markdown(
+                f"Desde {inicio_r['data_base']:%m/%Y}, a inadimplência deste recorte passou de "
+                f"**{br(inicio_r['taxa_inad'])}%** para **{br(linha_mes['taxa_inad'])}%** "
+                f"em {mes:%m/%Y}, e {direcao}."
+            )
+            explicar_recorte(linha_mes, nota_mes, mes)
+
+            # Para meses-base já conferidos, mostra o que aconteceu de fato
+            linha_resultado = historico[historico["data_base"] == mes_resultado]
+            if pd.notna(linha_mes["alvo"]) and not linha_resultado.empty:
+                taxa_depois = linha_resultado["taxa_inad"].iloc[0]
+                limite = max(linha_mes["taxa_inad"] + 0.5, linha_mes["taxa_inad"] * 1.2)
+                if linha_mes["alvo"] == 1:
+                    st.markdown(
+                        f":orange[**:material/fact_check: O que aconteceu de fato:**] em {mes_resultado:%m/%Y}, "
+                        f"a inadimplência chegou a **{br(taxa_depois)}%**, acima de {br(limite)}%: "
+                        "**houve alta relevante**."
+                    )
+                else:
+                    st.markdown(
+                        f":green[**:material/fact_check: O que aconteceu de fato:**] em {mes_resultado:%m/%Y}, "
+                        f"a inadimplência ficou em **{br(taxa_depois)}%**, sem passar de {br(limite)}%: "
+                        "**não houve alta relevante**."
+                    )
 
     col_linhas, col_barras = st.columns([3, 2], gap="medium")
 
@@ -898,7 +994,7 @@ with aba_recorte:
         # Texto já formatado com vírgula para a dica do gráfico (o Vega usaria ponto)
         series["taxa_txt"] = series["taxa"].map(br) + "%"
 
-        # Faixa azul-clara destacando os meses que o modelo pontuou (jul a dez/2025)
+        # Faixa azul-clara destacando os meses que o modelo pontuou (jul/2025 em diante)
         faixa = pd.DataFrame({"inicio": [notas["data_base"].min()], "fim": [notas["data_base"].max()]})
         destaque = alt.Chart(faixa).mark_rect(opacity=0.12, color="#3B82F6").encode(
             x="inicio:T", x2="fim:T"
@@ -920,12 +1016,12 @@ with aba_recorte:
         )
         st.altair_chart(
             destaque + linhas,
-            alt=f"Inadimplência e atraso de 15 a 90 dias de {uf}, {cliente}, {nome_curto(modalidade)}, 2022 a 2025",
+            alt=f"Inadimplência e atraso de 15 a 90 dias de {uf}, {cliente}, {nome_curto(modalidade)}, jan/2022 a {ULTIMO_MES:%m/%Y}",
         )
         st.caption(
             "**Como ler:** a linha azul é a inadimplência e a laranja é o atraso de 15 a 90 dias. "
             "Uma linha subindo quer dizer mais pagamentos atrasados. A faixa azul-clara marca os meses "
-            "(jul a dez/2025) para os quais o modelo fez previsões."
+            f"(jul/2025 a {notas['data_base'].max():%m/%Y}) para os quais o modelo fez previsões."
         )
 
     with col_barras.container(border=True):
@@ -960,7 +1056,7 @@ with aba_recorte:
         )
         st.caption(
             "**Como ler:** cada barra é a nota deste recorte num mês-base. A linha tracejada cinza "
-            "é a nota típica (mediana) entre os 386 recortes. Barra acima da linha = risco acima do "
+            "é a nota típica (mediana) entre todos os recortes do mês. Barra acima da linha = risco acima do "
             "normal."
         )
 
@@ -984,7 +1080,8 @@ subiu nos últimos 3 meses?"*. A nota final combina as respostas de todas as ár
         st.markdown(
             """
 - **Recortes:** 386 combinações de UF × cliente × modalidade com 48 meses completos (2022 a 2025)
-  e carteira ativa mediana de pelo menos R$ 100 milhões.
+  e carteira ativa mediana de pelo menos R$ 100 milhões. Os meses de 2026 (jan a set) foram
+  acrescentados depois para esses mesmos recortes (`07_dados_2026.ipynb`), sem treinar o modelo de novo.
 - **Alvo:** alta da inadimplência em 6 meses de mais de 0,5 ponto percentual **e** mais de 20%.
 - **Variáveis:** taxas de inadimplência, de atraso de 15 a 90 dias e de ativo problemático; variações
   em 3 e 6 meses; crescimento da carteira; UF, tipo de cliente e modalidade.
@@ -1029,6 +1126,62 @@ A tabela compara o modelo com alternativas mais simples. Quanto maior a barra, m
             "AP": st.column_config.ProgressColumn("AP", min_value=0.0, max_value=1.0, format="%.3f"),
         },
         alt="AUC e AP de cada modelo no teste de 2025; a floresta aleatória tem os maiores valores",
+    )
+
+    # Teste de verdade: meses-base depois do treino cujo resultado já saiu --------
+    conferidas = notas.dropna(subset=["alvo"])
+    y_real = conferidas["alvo"].astype(int)
+    auc_real = roc_auc_score(y_real, conferidas["nota_risco"])
+    ap_real = average_precision_score(y_real, conferidas["nota_risco"])
+    chute_real = y_real.mean()
+    st.subheader(":blue[Teste de verdade: previsões já conferidas]", icon=":material/verified:")
+    st.markdown(
+        f"""
+O modelo do app foi treinado com meses-base **até {FIM_TREINO:%m/%Y}**. Depois disso, o Banco Central
+publicou dados novos. Para os meses-base de **{conferidas['data_base'].min():%m/%Y} a
+{conferidas['data_base'].max():%m/%Y}**, já sabemos o que aconteceu 6 meses depois. É o teste mais
+honesto possível: o modelo **não foi ajustado** depois de ver esses resultados.
+
+- **AUC: {br(auc_real, 3)}** (chute: 0,500).
+- **AP: {br(ap_real, 3)}**. Nesse período, {br(100 * chute_real, 0)}% dos casos tiveram alta, então
+  chutar daria {br(chute_real, 3)}. O modelo chegou a **{br(ap_real / chute_real, 1)} vezes** isso.
+
+O desempenho ficou parecido com o do teste de 2025, sinal de que o modelo **continua funcionando** com
+dados novos.
+"""
+    )
+    acertos = (
+        conferidas.groupby("data_base")
+        .apply(
+            lambda g: pd.Series({
+                "altas_top20": int(g.nlargest(20, "nota_risco")["alvo"].astype(int).sum()),
+                "pct_todos": round(100 * g["alvo"].astype(int).mean(), 1),
+            }),
+            include_groups=False,
+        )
+        .reset_index()
+    )
+    acertos["mes"] = acertos["data_base"].dt.strftime("%m/%Y")
+    acertos["pct_top20"] = 5.0 * acertos["altas_top20"]  # 20 recortes: cada um vale 5%
+    st.dataframe(
+        acertos[["mes", "pct_top20", "pct_todos"]],
+        hide_index=True,
+        column_config={
+            "mes": st.column_config.TextColumn("Mês-base"),
+            "pct_top20": st.column_config.ProgressColumn(
+                "Alta de fato entre os 20 de maior nota (%)", min_value=0, max_value=100, format="%.0f%%",
+                help="Dos 20 recortes com maior nota naquele mês-base, quantos tiveram alta relevante.",
+            ),
+            "pct_todos": st.column_config.ProgressColumn(
+                "Alta de fato entre todos (%)", min_value=0, max_value=100, format="%.0f%%",
+                help="Entre todos os recortes do mês: é o que se acertaria escolhendo 20 ao acaso.",
+            ),
+        },
+        alt="Por mês-base, porcentagem de altas reais entre os 20 recortes de maior nota e entre todos",
+    )
+    st.caption(
+        "**Como ler:** se a barra da esquerda é maior que a da direita, o topo do ranking concentrou "
+        "mais altas reais do que uma escolha ao acaso."
     )
 
     st.subheader(":blue[O que o modelo não faz]", icon=":material/warning:")
