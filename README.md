@@ -116,14 +116,46 @@ A escolha foi feita numa **validação temporal dentro do treino**: sub-treino d
 
 O app (`app/app.py`) usa a floresta aleatória **treinada de novo com todos os meses que já têm alvo** (jul/2022 a jun/2025, 13.896 linhas; `06_modelo_final.ipynb`). Com ela, pontua os meses-base de **jul a dez/2025**, cujo futuro ainda não está nos dados.
 
-São três abas:
-- **Ranking de risco:** os 386 recortes do mês escolhido ordenados pela nota de risco, com filtros de cliente, modalidade e UF.
-- **Evolução de um recorte:** a inadimplência e o atraso de 15 a 90 dias de 2022 a 2025, mais a nota de risco de cada mês de jul a dez/2025.
-- **Sobre o modelo:** como o modelo foi construído, os resultados no teste e as limitações.
+O app foi pensado para quem **não é da área**: os textos usam linguagem simples e explicam cada número.
 
-A **nota de risco** (0 a 1) serve para **ordenar** os recortes. Ela **não é uma probabilidade**, porque o modelo foi treinado dando mais peso aos casos de alta e as notas não foram calibradas.
+### Como funciona
 
-Em dez/2025, os 10 recortes de maior nota são todos de **financiamento rural para pessoa física**, em estados diferentes, com notas entre 0,85 e 0,95. O sinal aponta para o setor, e não para um estado específico.
+- **Barra lateral para personalizar:** escolha o **mês-base** (jul a dez/2025) e filtre por **tipo de cliente** (PF/PJ), **modalidade** e **UF**. Os filtros mudam os resultados, o ranking e a aba do recorte. Os textos são **gerados a partir dos dados**, então os números se ajustam ao grupo escolhido.
+- **Guia "Primeira vez aqui?":** explica, em 1 minuto, o que é inadimplência, recorte, nota de risco e ponto percentual.
+
+### Abas
+
+| Aba | O que mostra |
+|---|---|
+| **Resultados** | Resumo em 3 números e os principais achados, cada um com um **"O que isso significa"**. Inclui um exemplo detalhado do recorte de maior risco. |
+| **Ranking** | Os recortes ordenados pela nota, com a **posição** de cada um entre os 386. Escolhendo um recorte da lista, o app explica por que ele tem aquela nota. |
+| **Recorte** | A história de um recorte desde 2022 (gráfico da inadimplência e do atraso curto) e a explicação da nota dele. |
+| **Modelo** | Como o modelo funciona, se ele é bom (AUC e AP em palavras simples) e o que ele não faz. |
+
+### Como o app explica a nota de um recorte
+
+Para cada recorte, o app mostra:
+- **Posição:** por exemplo, "nota 0,95, maior que a de 385 dos 386 recortes".
+- **O que precisaria acontecer:** a taxa que a inadimplência teria que passar em 6 meses para contar como alta relevante, pela regra do alvo (+0,5 ponto **e** +20%).
+- **Sinais de alerta e sinais tranquilizadores:** comparação com outros estados que têm o mesmo tipo de crédito e de cliente, olhando o atraso curto, a direção recente da inadimplência e o crédito problemático.
+
+Isso ajuda a entender casos que parecem contraditórios. Em dez/2025, **SP · PF · empréstimos** tem inadimplência alta (10,59%), mas nota baixa (0,18). Para contar como alta relevante, a taxa teria que passar de **12,71%** em 6 meses, um salto que o modelo não vê força para acontecer.
+
+A comparação com outros estados é uma explicação simplificada. O modelo combina essas e outras informações de forma mais complexa.
+
+### A nota de risco
+
+A **nota de risco** (0 a 1) serve para **ordenar** os recortes. Ela **não é uma probabilidade**, porque o modelo foi treinado dando mais peso aos casos de alta e as notas não foram calibradas. Ela mede **sinais de que a inadimplência vai subir**, e não o tamanho da inadimplência hoje.
+
+### O que o app mostra em dez/2025 (sem filtros)
+
+- A inadimplência dos 386 recortes passou de **2,38%** (01/2022) para **4,09%**.
+- Dos 20 recortes de maior nota, **12 são de financiamento rural**. No crédito rural para pessoas físicas, a inadimplência ficou **11,1 vezes maior** desde 01/2022 (de 0,54% para 6,02%).
+- O sinal aparece em muitos estados ao mesmo tempo, o que aponta para um movimento do **setor**, e não de um estado específico.
+
+### Visual
+
+Tema **"Azul confiança"**, com barra lateral azul-marinho e modos claro e escuro. O tema fica em `app/.streamlit/config.toml`, e os contrastes de cor foram conferidos pelas regras de acessibilidade (WCAG).
 
 ## Estrutura do repositório
 
@@ -136,6 +168,7 @@ Em dez/2025, os 10 recortes de maior nota são todos de **financiamento rural pa
 ├── 06_modelo_final.ipynb         # modelo final e arquivos do app
 ├── app/
 │   ├── app.py                    # app no Streamlit
+│   ├── .streamlit/config.toml    # tema de cores (claro e escuro)
 │   ├── modelo.joblib             # modelo treinado (gerado pelo 06)
 │   └── dados_app.parquet         # histórico dos recortes (gerado pelo 06)
 ├── src/
