@@ -6,6 +6,8 @@ Projeto de ciência de dados com dados públicos do **Banco Central do Brasil**.
 
 Uma floresta aleatória treinada com dados de 2022 a 2024 e avaliada em 2025 alcançou **AUC de 0,770** e **precisão média (AP) de 0,527**, mais que o dobro da AP de um chute (0,249).
 
+**Veja o app funcionando:** https://previsao-inadimplencia-scr.streamlit.app
+
 ---
 
 ## Dados
@@ -113,6 +115,8 @@ A escolha foi feita numa **validação temporal dentro do treino**: sub-treino d
 - **Dados agregados:** o modelo trabalha com recortes, não com operações ou clientes individuais.
 
 ## App no Streamlit
+
+**Acesse:** https://previsao-inadimplencia-scr.streamlit.app (publicado no Streamlit Community Cloud; se o app estiver "dormindo", clique no botão para acordá-lo e aguarde cerca de 1 minuto).
 
 O app (`app/app.py`) usa a floresta aleatória **treinada de novo com todos os meses que já têm alvo** (jul/2022 a jun/2025, 13.896 linhas; `06_modelo_final.ipynb`). Com ela, pontua os meses-base de **jul a dez/2025**, cujo futuro ainda não está nos dados.
 
