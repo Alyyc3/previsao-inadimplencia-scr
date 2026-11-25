@@ -36,13 +36,17 @@ def carregar_modelo():
 
 
 @st.cache_data
-def carregar_dados():
-    """Histórico mensal dos 386 recortes, com as variáveis do modelo."""
+def carregar_dados(versao):
+    """Histórico mensal dos 386 recortes, com as variáveis do modelo.
+
+    `versao` é a data de modificação do arquivo: quando o arquivo muda (ex.: dados novos),
+    o argumento muda e o cache é refeito. Sem isso, o app continuaria com os dados antigos.
+    """
     return pd.read_parquet(PASTA_APP / "dados_app.parquet")
 
 
 modelo = carregar_modelo()
-dados = carregar_dados()
+dados = carregar_dados((PASTA_APP / "dados_app.parquet").stat().st_mtime)
 
 # O Pipeline guarda os nomes das colunas usadas no fit
 VARIAVEIS = list(modelo.feature_names_in_)
@@ -54,14 +58,17 @@ FIM_TREINO = pd.Timestamp("2025-06-30")
 
 
 @st.cache_data
-def pontuar():
-    """Calcula a nota de risco dos meses-base posteriores ao treino (jul/2025 em diante)."""
+def pontuar(versao):
+    """Calcula a nota de risco dos meses-base posteriores ao treino (jul/2025 em diante).
+
+    `versao` (data de modificação do arquivo de dados) renova o cache quando os dados mudam.
+    """
     a_pontuar = dados[dados["data_base"] > FIM_TREINO].dropna(subset=VARIAVEIS).copy()
     a_pontuar["nota_risco"] = modelo.predict_proba(a_pontuar[VARIAVEIS])[:, 1]
     return a_pontuar
 
 
-notas = pontuar()
+notas = pontuar((PASTA_APP / "dados_app.parquet").stat().st_mtime)
 N_RECORTES = len(dados[["uf", "cliente", "modalidade"]].drop_duplicates())  # 386
 ULTIMO_MES = dados["data_base"].max()
 ULTIMO_MES_COM_ALVO = notas.loc[notas["alvo"].notna(), "data_base"].max()
